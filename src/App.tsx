@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Container,
   Group,
@@ -11,68 +11,29 @@ import {
   Badge,
   Grid,
   Skeleton,
+  Divider,
 } from '@mantine/core';
-
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-  image: string;
-  category: string;
-}
+import { useAppDispatch, useAppSelector } from './store/hooks';
+import { fetchVegetables, updateQuantity, addToCart } from './store/slices/vegetableSlice';
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [quantities, setQuantities] = useState<Record<number, number>>({});
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const dispatch = useAppDispatch();
+  const { products, loading, error, quantities, cart } = useAppSelector((state) => state.vegetables);
   const [opened, setOpened] = useState(false);
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const response = await fetch(
-          'https://res.cloudinary.com/sivadass/raw/upload/v1535817394/json/products.json'
-        );
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data: Product[] = await response.json();
-        setProducts(data);
-      } catch (error) {
-        console.error('Ошибка загрузки товаров:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProducts();
-  }, []);
-
-  const updateQuantity = (id: number, delta: number) => {
-    setQuantities((prev) => {
-      const current = prev[id] || 0;
-      const newValue = Math.max(0, current + delta);
-      return { ...prev, [id]: newValue };
-    });
-  };
-
-  const addToCart = (id: number) => {
-    const quantity = quantities[id] || 0;
-    if (quantity > 0) {
-      setCart((prev) => ({
-        ...prev,
-        [id]: (prev[id] || 0) + quantity,
-      }));
-      setQuantities((prev) => ({ ...prev, [id]: 0 }));
-    }
-  };
+    dispatch(fetchVegetables());
+  }, [dispatch]);
 
   const totalItems = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
   const totalPrice = products.reduce((sum, product) => {
     const qty = cart[product.id] || 0;
     return sum + qty * product.price;
   }, 0);
+
+  if (error) {
+    return <div style={{ color: 'red', textAlign: 'center', padding: '2rem' }}>Ошибка: {error}</div>;
+  }
 
   return (
     <>
@@ -97,7 +58,7 @@ export default function App() {
           </Badge>
         </Group>
 
-        {/* Cart */}
+        {/* Cart Popover */}
         <Popover
           opened={opened}
           onChange={setOpened}
@@ -105,42 +66,53 @@ export default function App() {
           withArrow
           shadow="md"
           width={300}
-          zIndex={2000}
         >
           <Popover.Target>
-            <Button variant="filled" color="green" onClick={() => setOpened(!opened)}>
+            <Button 
+              variant="filled" 
+              color="green" 
+              onClick={() => setOpened((o) => !o)}
+            >
               {totalItems} Cart 🛒
             </Button>
           </Popover.Target>
           <Popover.Dropdown>
             {totalItems === 0 ? (
-              <Text c="dimmed">Your cart is empty</Text>
+              <Text c="dimmed" ta="center" py="md">
+                Your cart is empty
+              </Text>
             ) : (
-              <Stack>
+              <Stack gap="xs">
                 {products
                   .filter((p) => cart[p.id] > 0)
                   .map((product) => (
                     <Group key={product.id} justify="space-between">
-                      <Text>{product.name} × {cart[product.id]}</Text>
-                      <Text>${(product.price * cart[product.id]).toFixed(2)}</Text>
+                      <Text size="sm">
+                        {product.name} × {cart[product.id]}
+                      </Text>
+                      <Text size="sm" fw={500}>
+                        ${(product.price * cart[product.id]).toFixed(2)}
+                      </Text>
                     </Group>
                   ))}
-                <Text size="lg" fw={700} ta="right">
-                  Total: ${totalPrice.toFixed(2)}
-                </Text>
+                <Divider my="xs" />
+                <Group justify="space-between">
+                  <Text fw={600}>Total:</Text>
+                  <Text fw={700}>${totalPrice.toFixed(2)}</Text>
+                </Group>
               </Stack>
             )}
           </Popover.Dropdown>
         </Popover>
       </Group>
 
-      {/* Products */}
+      {/* Products Grid */}
       <Container size="lg" py="xl">
         {loading ? (
           <Grid>
             {[...Array(6)].map((_, i) => (
               <Grid.Col key={i} span={{ base: 12, sm: 6, md: 4 }}>
-                <Skeleton height={220} radius="md" />
+                <Skeleton height={280} radius="md" />
               </Grid.Col>
             ))}
           </Grid>
@@ -157,37 +129,54 @@ export default function App() {
                   onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}
                   onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                 >
-                  <Image
-                    src={product.image}
-                    alt={product.name}
-                    height={120}
-                    fit="cover"
-                  />
-                  <Stack mt="xs" gap={4}>
-                    <Text fw={600} size="sm" lineClamp={1}>
-                      {product.name}
-                    </Text>
-                    <Text c="dimmed" size="sm">${product.price}</Text>
-                    <Group justify="center" gap="xs" mt="auto">
+                  <Card.Section>
+                    <Image
+                      src={product.image}
+                      alt={product.name}
+                      height={160}
+                      fit="cover"
+                      fallbackSrc="https://placehold.co/400x300?text=No+Image"
+                    />
+                  </Card.Section>
+
+                  <Stack mt="md" gap="xs">
+                    <Group justify="space-between" align="center">
+                      <Text fw={600} size="lg">
+                        {product.name}
+                      </Text>
+                      <Badge color="green" size="lg">
+                        ${product.price}
+                      </Badge>
+                    </Group>
+
+                    <Group justify="center" gap="xs" mt="sm">
                       <Button
-                        size="compact-xs"
-                        onClick={() => updateQuantity(product.id, -1)}
+                        size="xs"
+                        variant="outline"
+                        color="gray"
+                        onClick={() => dispatch(updateQuantity({ id: product.id, delta: -1 }))}
                       >
                         –
                       </Button>
-                      <Text fw={600}>{quantities[product.id] || 0}</Text>
+                      <Text fw={700} size="lg" w={40} ta="center">
+                        {quantities[product.id] || 0}
+                      </Text>
                       <Button
-                        size="compact-xs"
-                        onClick={() => updateQuantity(product.id, 1)}
+                        size="xs"
+                        variant="outline"
+                        color="gray"
+                        onClick={() => dispatch(updateQuantity({ id: product.id, delta: 1 }))}
                       >
                         +
                       </Button>
                     </Group>
+
                     <Button
                       fullWidth
                       color="green"
-                      size="xs"
-                      onClick={() => addToCart(product.id)}
+                      mt="sm"
+                      onClick={() => dispatch(addToCart(product.id))}
+                      disabled={!quantities[product.id]}
                     >
                       Add to cart
                     </Button>
